@@ -7,21 +7,23 @@
 #include "TM4C123GH6PM.h"
 #include "macros.h"
 
+#define STOP 1
+#define OPEN 2
+#define CLOSE 3
 
-#define PortA_IRQn 30
 
 //define a Semaphore handle
 xSemaphoreHandle xBinarySemaphore;
 xSemaphoreHandle xMutex;
 xQueueHandle xQueue;
 
-void sensorButtonInit(void);//jam function
-void timer0Init(void);			//jam function
-void timer0_Delay(int time);//jam function
-void motorInit(void);				//driver/passenger/jam
-void limitInit(void);				//driver/passenger/ jam
-void buttonsInit(void);			//driver/passenger function
-void lockButtonInit(void);  //lock in driver/passenger function
+void sensorButtonInit(void);
+void timer0Init(void);
+void timer0_Delay(int time);
+void motorInit(void);
+void limitInit(void);
+void buttonsInit(void);
+void lockButtonInit(void);
 
 void jamTask(void* pvParameters) {
     //TAKE SEMAPHORE
@@ -46,21 +48,20 @@ void jamTask(void* pvParameters) {
 void recieveQueue(void* pvParameters) {
 		int Val;
 		portBASE_TYPE xStatus;
-		const portTickType xTicks=100/portTICK_RATE_MS;
 		while(1)
 		{
 			xStatus=xQueueReceive(xQueue,&Val,portMAX_DELAY);		
-			if(Val==1)        //TURN OFF MOTOR
+			if(Val==STOP)
 			{
 					GPIO_PORTF_DATA_R &= ~(1 << 3);
 					GPIO_PORTF_DATA_R &= ~(1 << 2);
 			}
-			else if(Val==2)   // CLOSE WINDOW
+			else if(Val==OPEN)
 			{
 					GPIO_PORTF_DATA_R |= (1 << 3);
 					GPIO_PORTF_DATA_R &= ~(1 << 2);
 			}
-			else if(Val==3)  //OPEN WINDOW
+			else if(Val==CLOSE)
 			{
 					GPIO_PORTF_DATA_R &= ~(1 << 3);
 					GPIO_PORTF_DATA_R |= (1 << 2);
@@ -76,37 +77,37 @@ void driver(void* pvParameters){
 		while(1)
 		{
 			xSemaphoreTake(xMutex,portMAX_DELAY );
-			if (GET_BIT(GPIO_PORTD_DATA_R,0)==0){ //pullup close
-					Val=2;
+			if (GET_BIT(GPIO_PORTD_DATA_R,0)==0){ //pullup
+					Val=OPEN;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 					vTaskDelay(1000); 
 					if (GET_BIT(GPIO_PORTD_DATA_R,0)==0) //still pressing then it is manual
 						{
-							while(GET_BIT(GPIO_PORTD_DATA_R,0)==0);
+							while(!(GET_BIT(GPIO_PORTA_DATA_R,7)==1 | GET_BIT(GPIO_PORTD_DATA_R,0)==1 | GET_BIT(GPIO_PORTD_DATA_R,1)==0));
 						}
 			 
 					else if (GET_BIT(GPIO_PORTD_DATA_R,0)==1) // then it will be automatic
 					{   
 								while(!(GET_BIT(GPIO_PORTA_DATA_R,7)==1 | GET_BIT(GPIO_PORTD_DATA_R,0)==0 | GET_BIT(GPIO_PORTD_DATA_R,1)==0)); 
 					}
-					Val=1;
+					Val=STOP;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 			}
-			if (GET_BIT(GPIO_PORTD_DATA_R,1)==0){ //pullup open
-						Val=3;
+			if (GET_BIT(GPIO_PORTD_DATA_R,1)==0){ //pullup
+						Val=CLOSE;
 						xStatus = xQueueSendToBack(xQueue,&Val,0);
 						vTaskDelay(1000); 
 						if (GET_BIT(GPIO_PORTD_DATA_R,1)==0) //still pressing then it is manual
 						{
 
-						while(GET_BIT(GPIO_PORTD_DATA_R,1)==0);
+						while(!(GET_BIT(GPIO_PORTD_DATA_R,6)==1 | GET_BIT(GPIO_PORTD_DATA_R,1)==1| GET_BIT(GPIO_PORTD_DATA_R,0)==0));
 						}
 			 
 						else if (GET_BIT(GPIO_PORTD_DATA_R,1)==1) // then it will be automatic
 						{   
 									while(!(GET_BIT(GPIO_PORTD_DATA_R,6)==1 | GET_BIT(GPIO_PORTD_DATA_R,1)==0 | GET_BIT(GPIO_PORTD_DATA_R,0)==0)); 
 						}
-						Val=1;
+						Val=STOP;
 						xStatus = xQueueSendToBack(xQueue,&Val,0);				
 				}
 // Lock Switch
@@ -119,49 +120,58 @@ void driver(void* pvParameters){
 				{
 					vTaskPrioritySet(NULL,1);
 				}
+				portBASE_TYPE	 lockLed= uxTaskPriorityGet(NULL);
+				if(lockLed==2)
+				{
+					GPIO_PORTF_DATA_R |=0x02;
+				}
+				else
+				{
+					GPIO_PORTF_DATA_R &=~(0x02);
+				}
 			xSemaphoreGive(xMutex);
-			vTaskDelay(100);
+			//vTaskDelay(100);
+				timer0_Delay(200);
 		}
 	}
 
 void passenger(void* pvParameters){
 		int Val;
 		portBASE_TYPE xStatus;
-		//Val= (int) pvParameters;
 		while(1)
 		{
 			xSemaphoreTake(xMutex,portMAX_DELAY );
-			if (GET_BIT(GPIO_PORTD_DATA_R,2)==0){ //pullup close
-					Val=2;
+			if (GET_BIT(GPIO_PORTD_DATA_R,2)==0){ //pullup
+					Val=OPEN;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 					vTaskDelay(1000); 
 					if (GET_BIT(GPIO_PORTD_DATA_R,2)==0) //still pressing then it is manual
 						{
-							while(GET_BIT(GPIO_PORTD_DATA_R,2)==0);
+							while(!(GET_BIT(GPIO_PORTA_DATA_R,7)==1 | GET_BIT(GPIO_PORTD_DATA_R,2)==1 | GET_BIT(GPIO_PORTD_DATA_R,3)==0));
 						}
 			 
 					else if (GET_BIT(GPIO_PORTD_DATA_R,2)==1) // then it will be automatic
 						{   
 							while(!(GET_BIT(GPIO_PORTA_DATA_R,7)==1 | GET_BIT(GPIO_PORTD_DATA_R,2)==0 | GET_BIT(GPIO_PORTD_DATA_R,3)==0)); 
 						}
-					Val=1;    //Turn off motor
+					Val=STOP;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 			}
 			
-			if (GET_BIT(GPIO_PORTD_DATA_R,3)==0){ //pullup open
-					Val=3;
+			if (GET_BIT(GPIO_PORTD_DATA_R,3)==0){ //pullup
+					Val=CLOSE;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 					vTaskDelay(1000); 
 					if (GET_BIT(GPIO_PORTD_DATA_R,3)==0) //still pressing then it is manual
 					{
-						while(GET_BIT(GPIO_PORTD_DATA_R,3)==0);
+						while(!(GET_BIT(GPIO_PORTD_DATA_R,6)==1 | GET_BIT(GPIO_PORTD_DATA_R,3)==1 | GET_BIT(GPIO_PORTD_DATA_R,2)==0));
 					}
 				 
 					else if (GET_BIT(GPIO_PORTD_DATA_R,3)==1) // then it will be automatic
 					{   
 						while(!(GET_BIT(GPIO_PORTD_DATA_R,6)==1 | GET_BIT(GPIO_PORTD_DATA_R,3)==0 | GET_BIT(GPIO_PORTD_DATA_R,2)==0)); 
 					}
-					Val=1;   //Turn off motor
+					Val=STOP;
 					xStatus = xQueueSendToBack(xQueue,&Val,0);
 			}
 			xSemaphoreGive(xMutex);
@@ -184,7 +194,7 @@ int main( void )
 		__ASM("CPSIE i");
 		
 		vSemaphoreCreateBinary(xBinarySemaphore);
-		//xBinarySemaphore = xSemaphoreCreateBinary();
+
 	if( xBinarySemaphore != NULL )
 		{
 			xTaskCreate( jamTask, "jamTask", 200, NULL, 5, NULL );
@@ -271,11 +281,13 @@ void lockButtonInit(void)
     GPIO_PORTA_PUR_R |= (1<<3);
     GPIO_PORTA_DEN_R |= (1<<3);
 	
+
+	
 }
 
 void buttonsInit(void)
 {
-		    //Enable Port D
+		//Enable Port D
     SYSCTL_RCGCGPIO_R |= 0x08;
 	
     __asm__("NOP; NOP; NOP; NOP;");
@@ -316,4 +328,9 @@ void motorInit(void)
     GPIO_PORTF_DIR_R |= ((1 << 2)|(1<<3));
     GPIO_PORTF_CR_R |= (1 << 2)|(1<<3);
     GPIO_PORTF_DEN_R |= (1 << 2)|(1<<3);
+	
+		GPIO_PORTF_DIR_R |= (1 << 1);
+		GPIO_PORTF_CR_R |= (1<<1);
+   // GPIO_PORTA_PUR_R |= (1<<2);
+    GPIO_PORTF_DEN_R |= (1<<1);
 }
